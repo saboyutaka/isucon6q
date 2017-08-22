@@ -217,7 +217,7 @@ module Isuda
 
       bound = [@user_id, keyword, description] * 2
       db.xquery("BEGIN")
-      db.xquery(%| select * from entry where keyword = ? for update |, keyword)
+      db.xquery(%| select * from entry where keyword = ? lock in share mode |, keyword)
       db.xquery(%|
         INSERT INTO entry (author_id, keyword, description, created_at, updated_at)
         VALUES (?, ?, ?, NOW(), NOW())
@@ -257,13 +257,18 @@ module Isuda
 
     post '/stars' do
       keyword = params[:keyword]
-      db.xquery(%| select * from entry where keyword = ? |, keyword).first or halt(404)
+      db.xquery('BEGIN')
+      unless db.xquery(%| select * from entry where keyword = ? for update |, keyword).first
+        db.xquery('COMMIT')
+        halt(404)
+      end
 
       user_name = params[:user]
       db.xquery(%|
         INSERT INTO star (keyword, user_name, created_at)
         VALUES (?, ?, NOW())
       |, keyword, user_name)
+      db.xquery('COMMIT')
 
       content_type :json
       JSON.generate(result: 'ok')
