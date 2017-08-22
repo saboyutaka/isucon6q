@@ -96,33 +96,17 @@ module Isuda
         ! validation['valid']
       end
 
-      def pattern
-        return @pattern if @pattern
-
-        if File.exist?("pattern.txt")
-          @pattern = File.read('pattern.txt')
-        else
-          keywords = db.xquery(%| select keyword from entry order by character_length(keyword) desc |)
-          @pattern = keywords.map {|k| Regexp.escape(k[:keyword]) }.join('|')
-          File.write('pattern.txt', @pattern)
-        end
-        @pattern
+      def keywords
+        @keywords ||= db.xquery(%| select keyword from entry order by character_length(keyword) desc |).to_a.map{|k| k[:keyword] }
       end
 
       def htmlify(content)
-
-        kw2hash = {}
-        hashed_content = content.gsub(/(#{pattern})/) {|m|
-          matched_keyword = $1
-          "isuda_#{Digest::SHA1.hexdigest(matched_keyword)}".tap do |hash|
-            kw2hash[matched_keyword] = hash
-          end
-        }
-        escaped_content = Rack::Utils.escape_html(hashed_content)
-        kw2hash.each do |(keyword, hash)|
+        escaped_content = Rack::Utils.escape_html(content)
+        included_keywords = keywords.select {|k| k.include?(content) }
+        included_keywords.each do |keyword|
           keyword_url = url("/keyword/#{Rack::Utils.escape_path(keyword)}")
           anchor = '<a href="%s">%s</a>' % [keyword_url, Rack::Utils.escape_html(keyword)]
-          escaped_content.gsub!(hash, anchor)
+          escaped_content.gsub!(keyword, anchor)
         end
         escaped_content.gsub(/\n/, "<br />\n")
       end
@@ -151,7 +135,6 @@ module Isuda
       isutar_initialize_url.path = '/initialize'
       Net::HTTP.get_response(isutar_initialize_url)
 
-      File.delete('pattern.txt') if File.exist?("pattern.txt")
 
       content_type :json
       JSON.generate(result: 'ok')
@@ -241,7 +224,6 @@ module Isuda
         REPLACE INTO entry (author_id, keyword, description, created_at, updated_at)
         VALUES (?, ?, ?, NOW(), NOW())
       |, *bound)
-      File.delete('pattern.txt') if File.exist?("pattern.txt")
 
       redirect_found '/'
     end
@@ -268,7 +250,6 @@ module Isuda
       end
 
       db.xquery(%| DELETE FROM entry WHERE keyword = ? |, keyword)
-      File.delete('pattern.txt') if File.exist?("pattern.txt")
 
       redirect_found '/'
     end
