@@ -216,12 +216,15 @@ module Isuda
       halt(400) if is_spam_content(description) || is_spam_content(keyword)
 
       bound = [@user_id, keyword, description] * 2
+      db.xquery("BEGIN")
+      db.xquery(%| select * from entry where keyword = ? for update |, keyword)
       db.xquery(%|
         INSERT INTO entry (author_id, keyword, description, created_at, updated_at)
         VALUES (?, ?, ?, NOW(), NOW())
         ON DUPLICATE KEY UPDATE
         author_id = ?, keyword = ?, description = ?, updated_at = NOW()
       |, *bound)
+      db.xquery("COMMIT")
 
       redirect_found '/'
     end
@@ -229,7 +232,7 @@ module Isuda
     get '/keyword/:keyword', set_name: true do
       keyword = params[:keyword] or halt(400)
 
-      entry = db.xquery(%| select * from entry where keyword = ? |, keyword).first or halt(404)
+      entry = db.query(%| select * from entry where keyword = ? |, keyword).first or halt(404)
       entry[:stars] = load_stars(entry[:keyword])
       entry[:html] = htmlify(entry[:description])
 
