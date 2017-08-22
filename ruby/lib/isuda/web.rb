@@ -101,11 +101,12 @@ module Isuda
       end
 
       def pattern(keywords)
-        keywords.map {|k| Regexp.escape(k[:keyword])}.join('|')
+        keywords.map {|k| Regexp.escape(k)}.join('|')
       end
 
       def htmlify(content)
-        included_keywords = keywords.select {|k| k.include?(content)}
+        kw2hash = {}
+        included_keywords = keywords.select {|k| k.include?(content) }
         hashed_content  = content.gsub(/(#{pattern(included_keywords)})/) {|m|
           matched_keyword = $1
           "isuda_#{Digest::SHA1.hexdigest(matched_keyword)}".tap do |hash|
