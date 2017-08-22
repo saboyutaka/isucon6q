@@ -22,6 +22,7 @@ module Isuda
     set :dsn, ENV['ISUDA_DSN'] || 'dbi:mysql:db=isuda'
     set :session_secret, 'tonymoris'
     set :isupam_origin, ENV['ISUPAM_ORIGIN'] || 'http://localhost:5050'
+    set :isutar_origin, ENV['ISUTAR_ORIGIN'] || 'http://localhost:5001'
 
     configure :development do
       require 'rack-mini-profiler'
@@ -119,8 +120,12 @@ module Isuda
       end
 
       def load_stars(keyword)
-        keyword ||= ''
-        db.xquery(%| select user_name from star where keyword = ? |, keyword).to_a
+        isutar_url = URI(settings.isutar_origin)
+        isutar_url.path = '/stars'
+        isutar_url.query = URI.encode_www_form(keyword: keyword)
+        body = Net::HTTP.get(isutar_url)
+        stars_res = JSON.parse(body)
+        stars_res['stars']
       end
 
       def redirect_found(path)
@@ -130,7 +135,9 @@ module Isuda
 
     get '/initialize' do
       db.xquery(%| DELETE FROM entry WHERE id > 7101 |)
-      db.xquery(%| TRUNCATE star |)
+      isutar_initialize_url = URI(settings.isutar_origin)
+      isutar_initialize_url.path = '/initialize'
+      Net::HTTP.get_response(isutar_initialize_url)
 
       content_type :json
       JSON.generate(result: 'ok')
@@ -248,22 +255,6 @@ module Isuda
       db.xquery(%| DELETE FROM entry WHERE keyword = ? |, keyword)
 
       redirect_found '/'
-    end
-
-    post '/stars' do
-      keyword = params[:keyword]
-      unless db.xquery(%| select * from entry where keyword = ? for update |, keyword).first
-        halt(404)
-      end
-
-      user_name = params[:user]
-      db.xquery(%|
-        INSERT INTO star (keyword, user_name, created_at)
-        VALUES (?, ?, NOW())
-      |, keyword, user_name)
-
-      content_type :json
-      JSON.generate(result: 'ok')
     end
   end
 end
