@@ -106,7 +106,7 @@ module Isuda
 
       def htmlify(content)
         kw2hash = {}
-        included_keywords = keywords.select {|k| k.include?(content) }
+        included_keywords = keywords.select {|k| content.include?(k) }
         hashed_content  = content.gsub(/(#{pattern(included_keywords)})/) {|m|
           matched_keyword = $1
           "isuda_#{Digest::SHA1.hexdigest(matched_keyword)}".tap do |hash|
