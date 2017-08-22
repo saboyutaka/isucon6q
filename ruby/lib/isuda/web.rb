@@ -41,8 +41,8 @@ module Isuda
       condition {
         user_id = session[:user_id]
         if user_id
-          user = db.xquery(%| select name from user where id = ? |, user_id).first
-          @user_id = user_id
+          user       = db.xquery(%| select name from user where id = ? |, user_id).first
+          @user_id   = user_id
           @user_name = user[:name]
           halt(403) unless @user_name
         end
@@ -60,12 +60,12 @@ module Isuda
         Thread.current[:db] ||=
           begin
             _, _, attrs_part = settings.dsn.split(':', 3)
-            attrs = Hash[attrs_part.split(';').map {|part| part.split('=', 2) }]
-            mysql = Mysql2::Client.new(
-              username: settings.db_user,
-              password: settings.db_password,
-              database: attrs['db'],
-              encoding: 'utf8mb4',
+            attrs            = Hash[attrs_part.split(';').map {|part| part.split('=', 2)}]
+            mysql            = Mysql2::Client.new(
+              username:     settings.db_user,
+              password:     settings.db_password,
+              database:     attrs['db'],
+              encoding:     'utf8mb4',
               init_command: %|SET SESSION sql_mode='TRADITIONAL,NO_AUTO_VALUE_ON_ZERO,ONLY_FULL_GROUP_BY'|,
             )
             mysql.query_options.update(symbolize_keys: true)
@@ -74,8 +74,8 @@ module Isuda
       end
 
       def register(name, pw)
-        chars = [*'A'..'~']
-        salt = 1.upto(20).map { chars.sample }.join('')
+        chars           = [*'A'..'~']
+        salt            = 1.upto(20).map {chars.sample}.join('')
         salted_password = encode_with_salt(password: pw, salt: salt)
         db.xquery(%|
           INSERT INTO user (name, salt, password, created_at)
@@ -84,29 +84,39 @@ module Isuda
         db.last_id
       end
 
-      def encode_with_salt(password: , salt: )
+      def encode_with_salt(password:, salt:)
         Digest::SHA1.hexdigest(salt + password)
       end
 
       def is_spam_content(content)
         isupam_uri = URI(settings.isupam_origin)
-        res = Net::HTTP.post_form(isupam_uri, 'content' => content)
+        res        = Net::HTTP.post_form(isupam_uri, 'content' => content)
         validation = JSON.parse(res.body)
         validation['valid']
-        ! validation['valid']
+        !validation['valid']
       end
 
       def keywords
-        @keywords ||= db.xquery(%| select keyword from entry order by character_length(keyword) desc |).to_a.map{|k| k[:keyword] }
+        @keywords ||= db.xquery(%| select keyword from entry order by character_length(keyword) desc |).to_a.map {|k| k[:keyword]}
+      end
+
+      def pattern(keywords)
+        keywords.map {|k| Regexp.escape(k[:keyword])}.join('|')
       end
 
       def htmlify(content)
-        escaped_content = Rack::Utils.escape_html(content)
-        included_keywords = keywords.select {|k| k.include?(content) }
-        included_keywords.each do |keyword|
+        included_keywords = keywords.select {|k| k.include?(content)}
+        hashed_content  = content.gsub(/(#{pattern(included_keywords)})/) {|m|
+          matched_keyword = $1
+          "isuda_#{Digest::SHA1.hexdigest(matched_keyword)}".tap do |hash|
+            kw2hash[matched_keyword] = hash
+          end
+        }
+        escaped_content = Rack::Utils.escape_html(hashed_content)
+        kw2hash.each do |(keyword, hash)|
           keyword_url = url("/keyword/#{Rack::Utils.escape_path(keyword)}")
-          anchor = '<a href="%s">%s</a>' % [keyword_url, Rack::Utils.escape_html(keyword)]
-          escaped_content.gsub!(keyword, anchor)
+          anchor      = '<a href="%s">%s</a>' % [keyword_url, Rack::Utils.escape_html(keyword)]
+          escaped_content.gsub!(hash, anchor)
         end
         escaped_content.gsub(/\n/, "<br />\n")
       end
@@ -116,11 +126,11 @@ module Isuda
       end
 
       def load_stars(keyword)
-        isutar_url = URI(settings.isutar_origin)
-        isutar_url.path = '/stars'
+        isutar_url       = URI(settings.isutar_origin)
+        isutar_url.path  = '/stars'
         isutar_url.query = URI.encode_www_form(keyword: keyword)
-        body = Net::HTTP.get(isutar_url)
-        stars_res = JSON.parse(body)
+        body             = Net::HTTP.get(isutar_url)
+        stars_res        = JSON.parse(body)
         stars_res['stars']
       end
 
@@ -131,7 +141,7 @@ module Isuda
 
     get '/initialize' do
       db.xquery(%| DELETE FROM entry WHERE id > 7101 |)
-      isutar_initialize_url = URI(settings.isutar_origin)
+      isutar_initialize_url      = URI(settings.isutar_origin)
       isutar_initialize_url.path = '/initialize'
       Net::HTTP.get_response(isutar_initialize_url)
 
@@ -142,7 +152,7 @@ module Isuda
 
     get '/', set_name: true do
       per_page = 10
-      page = (params[:page] || 1).to_i
+      page     = (params[:page] || 1).to_i
 
       entries = db.xquery(%|
         SELECT * FROM entry
@@ -151,21 +161,21 @@ module Isuda
         OFFSET #{per_page * (page - 1)}
       |)
       entries.each do |entry|
-        entry[:html] = htmlify(entry[:description])
+        entry[:html]  = htmlify(entry[:description])
         entry[:stars] = load_stars(entry[:keyword])
       end
 
       total_entries = db.xquery(%| SELECT count(*) AS total_entries FROM entry |).first[:total_entries].to_i
 
       last_page = (total_entries.to_f / per_page.to_f).ceil
-      from = [1, page - 5].max
-      to = [last_page, page + 5].min
-      pages = [*from..to]
+      from      = [1, page - 5].max
+      to        = [last_page, page + 5].min
+      pages     = [*from..to]
 
       locals = {
-        entries: entries,
-        page: page,
-        pages: pages,
+        entries:   entries,
+        page:      page,
+        pages:     pages,
         last_page: last_page,
       }
       erb :index, locals: locals
@@ -184,7 +194,7 @@ module Isuda
       pw   = params[:password] || ''
       halt(400) if (name == '') || (pw == '')
 
-      user_id = register(name, pw)
+      user_id           = register(name, pw)
       session[:user_id] = user_id
 
       redirect_found '/'
@@ -233,7 +243,7 @@ module Isuda
 
       entry = db.xquery(%| select * from entry where keyword = ? |, keyword).first or halt(404)
       entry[:stars] = load_stars(entry[:keyword])
-      entry[:html] = htmlify(entry[:description])
+      entry[:html]  = htmlify(entry[:description])
 
       locals = {
         entry: entry,
