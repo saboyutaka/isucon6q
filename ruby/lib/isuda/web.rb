@@ -96,9 +96,21 @@ module Isuda
         ! validation['valid']
       end
 
+      def pattern
+        return @pattern if @pattern
+
+        if File.exist?("pattern.txt")
+          @pattern = File.read('pattern.txt')
+        else
+          keywords = db.xquery(%| select keyword from entry order by character_length(keyword) desc |)
+          @pattern = keywords.map {|k| Regexp.escape(k[:keyword]) }.join('|')
+          File.write('pattern.txt', @pattern)
+        end
+        @pattern
+      end
+
       def htmlify(content)
-        keywords = db.xquery(%| select keyword from entry order by character_length(keyword) desc |)
-        pattern = keywords.map {|k| Regexp.escape(k[:keyword]) }.join('|')
+
         kw2hash = {}
         hashed_content = content.gsub(/(#{pattern})/) {|m|
           matched_keyword = $1
@@ -138,6 +150,8 @@ module Isuda
       isutar_initialize_url = URI(settings.isutar_origin)
       isutar_initialize_url.path = '/initialize'
       Net::HTTP.get_response(isutar_initialize_url)
+
+      File.delete('pattern.txt') if File.exist?("pattern.txt")
 
       content_type :json
       JSON.generate(result: 'ok')
@@ -227,6 +241,7 @@ module Isuda
         REPLACE INTO entry (author_id, keyword, description, created_at, updated_at)
         VALUES (?, ?, ?, NOW(), NOW())
       |, *bound)
+      File.delete('pattern.txt') if File.exist?("pattern.txt")
 
       redirect_found '/'
     end
@@ -253,6 +268,7 @@ module Isuda
       end
 
       db.xquery(%| DELETE FROM entry WHERE keyword = ? |, keyword)
+      File.delete('pattern.txt') if File.exist?("pattern.txt")
 
       redirect_found '/'
     end
