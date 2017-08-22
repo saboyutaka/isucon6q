@@ -215,16 +215,11 @@ module Isuda
       description = params[:description]
       halt(400) if is_spam_content(description) || is_spam_content(keyword)
 
-      bound = [@user_id, keyword, description] * 2
-      db.xquery("BEGIN")
-      db.xquery(%| select * from entry where keyword = ? lock in share mode |, keyword)
+      bound = [@user_id, keyword, description]
       db.xquery(%|
-        INSERT INTO entry (author_id, keyword, description, created_at, updated_at)
+        REPLACE INTO entry (author_id, keyword, description, created_at, updated_at)
         VALUES (?, ?, ?, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE
-        author_id = ?, keyword = ?, description = ?, updated_at = NOW()
       |, *bound)
-      db.xquery("COMMIT")
 
       redirect_found '/'
     end
@@ -257,9 +252,7 @@ module Isuda
 
     post '/stars' do
       keyword = params[:keyword]
-      db.xquery('BEGIN')
       unless db.xquery(%| select * from entry where keyword = ? for update |, keyword).first
-        db.xquery('COMMIT')
         halt(404)
       end
 
@@ -268,7 +261,6 @@ module Isuda
         INSERT INTO star (keyword, user_name, created_at)
         VALUES (?, ?, NOW())
       |, keyword, user_name)
-      db.xquery('COMMIT')
 
       content_type :json
       JSON.generate(result: 'ok')
