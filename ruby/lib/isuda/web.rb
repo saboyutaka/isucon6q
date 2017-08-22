@@ -25,9 +25,16 @@ module Isuda
     set :isutar_origin, ENV['ISUTAR_ORIGIN'] || 'http://localhost:5001'
 
     configure :development do
+      require 'rack-mini-profiler'
+      require 'flamegraph'
+      require 'stackprof'
+      require 'rack-lineprof'
+      require 'pry'
       require 'sinatra/reloader'
 
       register Sinatra::Reloader
+      use Rack::MiniProfiler
+      use Rack::Lineprof
     end
 
     set(:set_name) do |value|
